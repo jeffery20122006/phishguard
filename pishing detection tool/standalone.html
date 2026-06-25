@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhishGuard - Phishing Detection Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --emerald-50: #f0fdf4;
+            --emerald-400: #34d399;
+            --emerald-500: #10b981;
+            --red-400: #f87171;
+            --red-500: #ef4444;
+            --amber-400: #fbbf24;
+            --blue-400: #60a5fa;
+        }
+        .pulse-glow {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100">
+    <div id="app"></div>
+
+    <script>
+        // Simple Phishing Detection Logic
+        class PhishGuard {
+            constructor() {
+                this.scanHistory = [];
+                this.reportedThreats = [
+                    { url: "paypaI.com-security-alert.net", type: "website", risk: "Dangerous", category: "PayPal Spoofing" },
+                    { url: "usps-redelivery.com", type: "sms", risk: "Dangerous", category: "Package Delivery Scam" },
+                    { url: "wellsfargo-security-alert-unusual-activity.com", type: "website", risk: "Dangerous", category: "Wells Fargo Mimicry" }
+                ];
+            }
+
+            analyzeUrl(url) {
+                let score = 0;
+                const findings = [];
+                
+                // Check for common phishing indicators
+                if (!url.includes("https://")) findings.push("Non-HTTPS protocol");
+                if (url.includes("@")) findings.push("Suspicious @ symbol in URL");
+                if ((url.match(/\./g) || []).length > 3) findings.push("Excessive subdomains");
+                if (/paypa[li]|amazo[rn]|gogle|facboo/i.test(url)) findings.push("Homograph typosquatting detected");
+                
+                // Risky TLDs
+                const riskyTLDs = [".xyz", ".top", ".work", ".click", ".gq", ".tk", ".ml"];
+                if (riskyTLDs.some(tld => url.endsWith(tld))) findings.push("High-risk TLD detected");
+                
+                // Check against known phishing database
+                if (this.reportedThreats.some(t => url.includes(t.url))) {
+                    findings.push("URL matches known phishing database");
+                    score = 90;
+                }
+                
+                score += findings.length * 15;
+                score = Math.min(score, 100);
+                
+                const risk = score >= 70 ? "Dangerous" : score >= 40 ? "Suspicious" : "Safe";
+                
+                return {
+                    score: Math.floor(score),
+                    risk: risk,
+                    findings: findings,
+                    recommendation: risk === "Dangerous" ? "Do not visit this URL" : "Be cautious"
+                };
+            }
+
+            analyzeEmail(sender, subject, body) {
+                let score = 0;
+                const findings = [];
+                
+                // Sender analysis
+                if (!sender.includes("@")) findings.push("Invalid sender format");
+                if (!sender.includes(subject.split(" ")[0]?.toLowerCase())) findings.push("Mismatched sender domain");
+                
+                // Urgent language
+                const urgentKeywords = ["immediately", "urgent", "verify", "confirm", "validate", "update"];
+                if (urgentKeywords.some(k => body.toLowerCase().includes(k))) {
+                    findings.push("Urgent language detected");
+                    score += 20;
+                }
+                
+                // Suspicious content
+                if (body.includes("http://") || body.includes("https://")) findings.push("Contains clickable links");
+                if (/click|verify|confirm|validate/i.test(body)) findings.push("Call-to-action detected");
+                if (/account|password|credit card|SSN/i.test(body)) findings.push("Requests sensitive information");
+                
+                score += findings.length * 12;
+                score = Math.min(score, 100);
+                
+                const risk = score >= 70 ? "Dangerous" : score >= 40 ? "Suspicious" : "Safe";
+                
+                return {
+                    score: Math.floor(score),
+                    risk: risk,
+                    findings: findings
+                };
+            }
+
+            analyzeSms(body) {
+                let score = 0;
+                const findings = [];
+                
+                // SMS phishing patterns
+                if (/verify|confirm|update|urgent/i.test(body)) findings.push("Urgent language in SMS");
+                if (/https?:\/\//.test(body)) findings.push("Contains suspicious link");
+                if (/package|delivery|failed|address/i.test(body)) findings.push("Package delivery scam pattern");
+                if (/bank|security|account|verify|password/i.test(body)) findings.push("Financial account targeting");
+                
+                score = findings.length * 20;
+                score = Math.min(score, 100);
+                
+                const risk = score >= 70 ? "Dangerous" : score >= 40 ? "Suspicious" : "Safe";
+                
+                return {
+                    score: Math.floor(score),
+                    risk: risk,
+                    findings: findings
+                };
+            }
+        }
+
+        const phishGuard = new PhishGuard();
+        let currentTab = "dashboard";
+
+        // UI Rendering
+        function renderApp() {
+            const app = document.getElementById("app");
+            
+            app.innerHTML = `
+                <div class="min-h-screen bg-slate-950">
+                    ${renderHeader()}
+                    <main class="max-w-7xl mx-auto px-4 py-8">
+                        ${currentTab === "dashboard" ? renderDashboard() : ""}
+                        ${currentTab === "url" ? renderUrlScanner() : ""}
+                        ${currentTab === "email" ? renderEmailAnalyzer() : ""}
+                        ${currentTab === "sms" ? renderSmsAnalyzer() : ""}
+                        ${currentTab === "database" ? renderDatabase() : ""}
+                    </main>
+                </div>
+            `;
+
+            attachEventListeners();
+        }
+
+        function renderHeader() {
+            return `
+                <header class="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md border-b border-slate-900 px-4 py-4">
+                    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg">
+                                <span class="text-xl font-bold text-slate-950">🛡️</span>
+                            </div>
+                            <div>
+                                <h1 class="text-xl font-bold text-white">PhishGuard</h1>
+                                <p class="text-xs text-slate-400">Advanced Phishing Detection</p>
+                            </div>
+                        </div>
+                        <nav class="flex gap-2 bg-slate-900/60 p-1 rounded-xl border border-slate-800 flex-wrap">
+                            <button onclick="setTab('dashboard')" class="px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${currentTab === 'dashboard' ? 'bg-emerald-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'}">Dashboard</button>
+                            <button onclick="setTab('url')" class="px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${currentTab === 'url' ? 'bg-emerald-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'}">🌐 URL</button>
+                            <button onclick="setTab('email')" class="px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${currentTab === 'email' ? 'bg-emerald-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'}">✉ Email</button>
+                            <button onclick="setTab('sms')" class="px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${currentTab === 'sms' ? 'bg-emerald-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'}">💬 SMS</button>
+                            <button onclick="setTab('database')" class="px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${currentTab === 'database' ? 'bg-emerald-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'}">📊 Database</button>
+                        </nav>
+                    </div>
+                </header>
+            `;
+        }
+
+        function renderDashboard() {
+            return `
+                <div class="space-y-8">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+                            <p class="text-xs text-slate-400">THREATS DETECTED</p>
+                            <h3 class="text-3xl font-bold text-white mt-2">${phishGuard.reportedThreats.length}</h3>
+                        </div>
+                        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+                            <p class="text-xs text-slate-400">SCANS PERFORMED</p>
+                            <h3 class="text-3xl font-bold text-white mt-2">${phishGuard.scanHistory.length}</h3>
+                        </div>
+                        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+                            <p class="text-xs text-slate-400">STATUS</p>
+                            <h3 class="text-3xl font-bold text-emerald-400 mt-2">🟢 ACTIVE</h3>
+                        </div>
+                    </div>
+
+                    <div class="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-8 space-y-4">
+                        <h2 class="text-2xl font-bold text-white">Welcome to PhishGuard</h2>
+                        <p class="text-slate-300">Protect yourself from phishing attacks by scanning URLs, emails, and SMS messages for malicious content.</p>
+                        <div class="flex gap-3 flex-wrap">
+                            <button onclick="setTab('url')" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl">Scan URL</button>
+                            <button onclick="setTab('email')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl">Check Email</button>
+                            <button onclick="setTab('sms')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl">Analyze SMS</button>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                        <h3 class="text-lg font-bold text-white mb-4">📋 Scan History</h3>
+                        <div class="space-y-3">
+                            ${phishGuard.scanHistory.length === 0 
+                                ? '<p class="text-slate-400 text-sm">No scans yet. Start by checking a URL, email, or SMS message.</p>'
+                                : phishGuard.scanHistory.map(h => `
+                                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-lg text-xs">
+                                        <p class="font-mono text-slate-300">${h.target}</p>
+                                        <p class="text-slate-500 mt-1">Risk: <span class="font-bold ${h.risk === 'Dangerous' ? 'text-red-400' : h.risk === 'Suspicious' ? 'text-amber-400' : 'text-emerald-400'}">${h.risk}</span></p>
+                                    </div>
+                                `).join('')
+                            }
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderUrlScanner() {
+            return `
+                <div class="max-w-3xl mx-auto space-y-6">
+                    <div class="space-y-2">
+                        <span class="text-xs text-emerald-400 font-bold">🌐 DOMAIN REPUTATION ENGINE</span>
+                        <h2 class="text-2xl font-bold text-white">URL Analysis & Security Check</h2>
+                    </div>
+
+                    <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4">
+                        <label class="block text-xs font-semibold text-slate-300">Enter URL to scan:</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="urlInput" placeholder="https://example.com" 
+                                class="flex-1 px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white text-sm focus:outline-none focus:border-emerald-500">
+                            <button onclick="scanUrl()" class="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl">SCAN</button>
+                        </div>
+
+                        <div class="pt-4">
+                            <p class="text-xs text-slate-400 mb-2">Quick test URLs:</p>
+                            <div class="flex flex-wrap gap-2">
+                                <button onclick="testUrl('https://www.paypal.com')" class="px-3 py-1 text-xs bg-slate-950 border border-slate-800 rounded hover:border-emerald-500">PayPal (Safe)</button>
+                                <button onclick="testUrl('https://paypaI.com-security-alert.net')" class="px-3 py-1 text-xs bg-slate-950 border border-slate-800 rounded hover:border-red-500">PayPal Spoof (Dangerous)</button>
+                                <button onclick="testUrl('https://amazon-suspicious.xyz')" class="px-3 py-1 text-xs bg-slate-950 border border-slate-800 rounded hover:border-red-500">Amazon Spoof (Dangerous)</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="urlResult"></div>
+                </div>
+            `;
+        }
+
+        function renderEmailAnalyzer() {
+            return `
+                <div class="max-w-3xl mx-auto space-y-6">
+                    <div class="space-y-2">
+                        <span class="text-xs text-emerald-400 font-bold">✉ EMAIL THREAT ANALYZER</span>
+                        <h2 class="text-2xl font-bold text-white">Email Phishing Detection</h2>
+                    </div>
+
+                    <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-2">From (Sender):</label>
+                                <input type="text" id="emailFrom" placeholder="sender@example.com" 
+                                    class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white text-xs focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-2">Subject:</label>
+                                <input type="text" id="emailSubject" placeholder="Email subject" 
+                                    class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white text-xs focus:outline-none">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-2">Body:</label>
+                            <textarea id="emailBody" rows="5" placeholder="Email content..." 
+                                class="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white text-xs focus:outline-none"></textarea>
+                        </div>
+
+                        <button onclick="scanEmail()" class="w-full px-4 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-lg">ANALYZE EMAIL</button>
+
+                        <div class="pt-2">
+                            <p class="text-xs text-slate-400 mb-2">Test templates:</p>
+                            <button onclick="loadEmailTemplate('phishing')" class="px-3 py-1 text-xs bg-slate-950 border border-slate-800 rounded hover:border-red-500 mr-2">Phishing Example</button>
+                            <button onclick="loadEmailTemplate('safe')" class="px-3 py-1 text-xs bg-slate-950 border border-slate-800 rounded hover:border-emerald-500">Legitimate Email</button>
+                        </div>
+                    </div>
+
+                    <div id="emailResult"></div>
+                </div>
+            `;
+        }
+
+        function renderSmsAnalyzer() {
+            return `
+                <div class="max-w-3xl mx-auto space-y-6">
+                    <div class="space-y-2">
+                        <span class="text-xs text-emerald-400 font-bold">💬 SMS SMISHING DETECTOR</span>
+                        <h2 class="text-2xl font-bold text-white">SMS Threat Analysis</h2>
+                    </div>
+
+                    <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4">
+                        <label class="block text-xs font-semibold text-slate-300">SMS Message:</label>
+                        <textarea id="smsInput" rows="4" placeholder="Paste SMS message text..." 
+                            class="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white text-xs focus:outline-none"></textarea>
+
+                        <button onclick="scanSms()" class="w-full px-4 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-lg">ANALYZE SMS</button>
+
+                        <div class="pt-2">
+                            <p class="text-xs text-slate-400 mb-2">Test templates:</p>
+                            <button onclick="loadSmsTemplate('usps')" class="px-3 py-1 text-xs bg-slate-950 border border-slate-800 rounded hover:border-red-500 mr-2">USPS Scam</button>
+                            <button onclick="loadSmsTemplate('bank')" class="px-3 py-1 text-xs bg-slate-950 border border-slate-800 rounded hover:border-amber-500 mr-2">Bank Alert</button>
+                            <button onclick="loadSmsTemplate('safe')" class="px-3 py-1 text-xs bg-slate-950 border border-slate-800 rounded hover:border-emerald-500">Legitimate SMS</button>
+                        </div>
+                    </div>
+
+                    <div id="smsResult"></div>
+                </div>
+            `;
+        }
+
+        function renderDatabase() {
+            return `
+                <div class="max-w-4xl mx-auto space-y-6">
+                    <div class="space-y-2">
+                        <span class="text-xs text-red-400 font-bold">🚨 THREAT DATABASE</span>
+                        <h2 class="text-2xl font-bold text-white">Known Phishing Threats</h2>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-4">
+                        ${phishGuard.reportedThreats.map(threat => `
+                            <div class="bg-slate-900 border border-slate-800 p-4 rounded-lg">
+                                <div class="flex justify-between items-start mb-2">
+                                    <span class="px-2 py-1 text-xs font-bold bg-red-950 text-red-400 rounded">${threat.type}</span>
+                                    <span class="text-xs font-bold ${threat.risk === 'Dangerous' ? 'text-red-400' : 'text-amber-400'}">${threat.risk}</span>
+                                </div>
+                                <p class="font-mono text-sm text-red-300 break-all">${threat.url}</p>
+                                <p class="text-xs text-slate-400 mt-2">${threat.category}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderResult(type, data) {
+            const riskColor = data.risk === 'Dangerous' ? 'bg-red-950 border-red-500/30' : 
+                            data.risk === 'Suspicious' ? 'bg-amber-950 border-amber-500/30' : 
+                            'bg-emerald-950 border-emerald-500/30';
+            const riskText = data.risk === 'Dangerous' ? 'text-red-400' : 
+                           data.risk === 'Suspicious' ? 'text-amber-400' : 
+                           'text-emerald-400';
+
+            return `
+                <div class="bg-slate-900 border border-slate-800 ${riskColor} p-6 rounded-2xl space-y-4 mt-6">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="text-xs text-slate-400 uppercase">VERDICT</p>
+                            <h3 class="text-2xl font-bold ${riskText} mt-1">${data.risk}</h3>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-xs text-slate-400">Risk Score</p>
+                            <p class="text-3xl font-bold ${riskText}">${data.score}/100</p>
+                        </div>
+                    </div>
+
+                    ${data.findings.length > 0 ? `
+                        <div class="border-t border-slate-800 pt-4">
+                            <p class="text-xs font-bold text-white mb-2">FINDINGS:</p>
+                            <ul class="space-y-1">
+                                ${data.findings.map(f => `<li class="text-xs text-slate-300">• ${f}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+
+                    <div class="border-t border-slate-800 pt-4">
+                        <p class="text-xs text-slate-300">${data.recommendation || 'Review findings above for security recommendations.'}</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Event handlers
+        function setTab(tab) {
+            currentTab = tab;
+            renderApp();
+        }
+
+        function scanUrl() {
+            const url = document.getElementById("urlInput").value;
+            if (!url) {
+                alert("Please enter a URL");
+                return;
+            }
+            const result = phishGuard.analyzeUrl(url);
+            document.getElementById("urlResult").innerHTML = renderResult("url", result);
+            phishGuard.scanHistory.push({ target: url, risk: result.risk, type: "URL" });
+        }
+
+        function testUrl(url) {
+            document.getElementById("urlInput").value = url;
+            scanUrl();
+        }
+
+        function scanEmail() {
+            const sender = document.getElementById("emailFrom").value;
+            const subject = document.getElementById("emailSubject").value;
+            const body = document.getElementById("emailBody").value;
+            
+            if (!body) {
+                alert("Please enter email content");
+                return;
+            }
+            
+            const result = phishGuard.analyzeEmail(sender, subject, body);
+            document.getElementById("emailResult").innerHTML = renderResult("email", result);
+            phishGuard.scanHistory.push({ target: `${sender} - ${subject}`, risk: result.risk, type: "Email" });
+        }
+
+        function loadEmailTemplate(type) {
+            if (type === 'phishing') {
+                document.getElementById("emailFrom").value = "support@paypal-security.net";
+                document.getElementById("emailSubject").value = "URGENT: Verify Your Account Immediately";
+                document.getElementById("emailBody").value = "Dear Customer,\n\nWe detected unusual activity on your PayPal account. Please verify your identity immediately by clicking here to avoid account termination.\n\nClick to verify: http://paypal-security-verify.com/signin";
+            } else {
+                document.getElementById("emailFrom").value = "billing@netflix.com";
+                document.getElementById("emailSubject").value = "Your Subscription Invoice";
+                document.getElementById("emailBody").value = "Hello,\n\nThank you for your Netflix subscription payment of $15.99. Your invoice has been updated in your account settings.\n\nView in your account: https://www.netflix.com/account";
+            }
+        }
+
+        function scanSms() {
+            const body = document.getElementById("smsInput").value;
+            if (!body) {
+                alert("Please enter SMS content");
+                return;
+            }
+            
+            const result = phishGuard.analyzeSms(body);
+            document.getElementById("smsResult").innerHTML = renderResult("sms", result);
+            phishGuard.scanHistory.push({ target: body.substring(0, 50), risk: result.risk, type: "SMS" });
+        }
+
+        function loadSmsTemplate(type) {
+            if (type === 'usps') {
+                document.getElementById("smsInput").value = "USPS Notice: Your package could not be delivered due to an incorrect house number. To update your address: https://usps-redelivery.com/verify";
+            } else if (type === 'bank') {
+                document.getElementById("smsInput").value = "Security Alert: Unusual transaction of $485.22 detected. Verify immediately: https://bank-verify.secure/confirm";
+            } else {
+                document.getElementById("smsInput").value = "Your bank: Your deposit of $1,200 has been received. Thank you!";
+            }
+        }
+
+        function attachEventListeners() {
+            const urlInput = document.getElementById("urlInput");
+            if (urlInput) {
+                urlInput.addEventListener("keypress", (e) => {
+                    if (e.key === "Enter") scanUrl();
+                });
+            }
+        }
+
+        // Initial render
+        renderApp();
+    </script>
+</body>
+</html>

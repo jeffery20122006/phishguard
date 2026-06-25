@@ -1,0 +1,6 @@
+{
+  "name": "PhishGuard",
+  "description": "A comprehensive phishing detection and analysis tool protecting users from malicious URLs, emails, and SMS alerts using advanced AI analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
